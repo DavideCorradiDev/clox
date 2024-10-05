@@ -1,0 +1,15 @@
+{
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "editor.formatOnSave": true,
+    "editor.renderWhitespace": "all",
+    "editor.inlayHints.enabled": "offUnlessPressed",
+    "editor.rulers": [
+        100
+    ],
+    "asciidoc.antora.enableAntoraSupport": false,
+    "files.associations": {
+        "chunk.h": "c"
+    },
+}
