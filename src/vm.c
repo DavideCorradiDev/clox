@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "compiler.h"
 #include "vm.h"
 #ifdef DEBUG_TRACE_EXECUTION
 #include "debug.h"
@@ -85,11 +86,10 @@ void free_vm(Vm *vm)
 {
 }
 
-InterpretResult interpret(Vm *vm, Chunk *chunk)
+InterpretResult interpret(Vm *vm, const char *source)
 {
-    vm->chunk = chunk;
-    vm->ip = chunk->code;
-    return run(vm);
+    compile(source);
+    return INTERPRET_OK;
 }
 
 void push(Vm *vm, Value value)
