@@ -6,19 +6,18 @@
 
 static void reset_stack(Vm *vm)
 {
-    vm->stack_top = &vm->stack;
+    vm->stack_top = (Value *)&vm->stack;
 }
 
 static InterpretResult run(Vm *vm)
 {
 #define READ_BYTE() (*vm->ip++)
 #define READ_CONSTANT() (vm->chunk->constants.values[READ_BYTE()])
-#define BINARY_OP(op)       \
-    do                      \
-    {                       \
-        double b = pop(vm); \
-        double a = pop(vm); \
-        push(vm, a op b);   \
+#define BINARY_OP(op)             \
+    do                            \
+    {                             \
+        double b = pop(vm);       \
+        *top(vm) = *top(vm) op b; \
     } while (false)
 
     for (;;)
@@ -44,7 +43,7 @@ static InterpretResult run(Vm *vm)
             break;
         }
         case OP_NEGATE:
-            push(vm, -pop(vm));
+            *top(vm) = -*top(vm);
             break;
         case OP_ADD:
             BINARY_OP(+);
@@ -96,4 +95,9 @@ Value pop(Vm *vm)
 {
     vm->stack_top--;
     return *vm->stack_top;
+}
+
+Value *top(Vm *vm)
+{
+    return vm->stack_top - 1;
 }
