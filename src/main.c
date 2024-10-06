@@ -11,6 +11,13 @@ int main(int argc, const char *argv[])
     Chunk chunk;
     init_chunk(&chunk);
 
+    write_constant(&chunk, 0, 122);
+    for (int i = 1; i < 256; i++)
+    {
+        write_constant(&chunk, i, 122);
+        write_chunk(&chunk, OP_ADD, 122);
+    }
+
     write_constant(&chunk, 1, 123);
     write_constant(&chunk, 2, 123);
     write_chunk(&chunk, OP_MULTIPLY, 123);

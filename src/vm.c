@@ -42,6 +42,13 @@ static InterpretResult run(Vm *vm)
             push(vm, constant);
             break;
         }
+        case OP_CONSTANT_LONG:
+        {
+            int index = READ_BYTE() | (READ_BYTE() << 8) | (READ_BYTE() << 16);
+            int constant = vm->chunk->constants.values[index];
+            push(vm, constant);
+            break;
+        }
         case OP_NEGATE:
             *top(vm) = -*top(vm);
             break;
