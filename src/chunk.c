@@ -55,6 +55,23 @@ void write_chunk(Chunk *chunk, uint8_t byte, int line)
     chunk->count++;
 }
 
+void write_constant(Chunk *chunk, Value value, int line)
+{
+    int index = add_constant(chunk, value);
+    if (index < 256)
+    {
+        write_chunk(chunk, OP_CONSTANT, line);
+        write_chunk(chunk, (uint8_t)index, line);
+    }
+    else
+    {
+        write_chunk(chunk, OP_CONSTANT_LONG, line);
+        write_chunk(chunk, (uint8_t)(index & 0xff), line);
+        write_chunk(chunk, (uint8_t)((index >> 8) & 0xff), line);
+        write_chunk(chunk, (uint8_t)((index >> 16) & 0xff), line);
+    }
+}
+
 int add_constant(Chunk *chunk, Value value)
 {
     write_value_array(&chunk->constants, value);
