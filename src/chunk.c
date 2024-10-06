@@ -9,6 +9,12 @@ void init_line_start_array(LineStartArray *array)
     array->values = NULL;
 }
 
+void free_line_start_array(LineStartArray *array)
+{
+    FREE_ARRAY(Value, array->values, array->capacity);
+    init_line_start_array(array);
+}
+
 void write_line_start_array(LineStartArray *array, int offset, int line)
 {
     if (array->count > 0 && array->values[array->count - 1].line == line)
@@ -27,12 +33,6 @@ void write_line_start_array(LineStartArray *array, int offset, int line)
     array->count++;
 }
 
-void free_line_start_array(LineStartArray *array)
-{
-    FREE_ARRAY(Value, array->values, array->capacity);
-    init_line_start_array(array);
-}
-
 void init_chunk(Chunk *chunk)
 {
     chunk->count = 0;
@@ -40,6 +40,14 @@ void init_chunk(Chunk *chunk)
     chunk->code = NULL;
     init_line_start_array(&chunk->lines);
     init_value_array(&chunk->constants);
+}
+
+void free_chunk(Chunk *chunk)
+{
+    FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
+    free_line_start_array(&chunk->lines);
+    free_value_array(&chunk->constants);
+    init_chunk(chunk);
 }
 
 void write_chunk(Chunk *chunk, uint8_t byte, int line)
@@ -99,12 +107,4 @@ int get_line(Chunk *chunk, int offset)
         }
     }
     return -1;
-}
-
-void free_chunk(Chunk *chunk)
-{
-    FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
-    free_line_start_array(&chunk->lines);
-    free_value_array(&chunk->constants);
-    init_chunk(chunk);
 }

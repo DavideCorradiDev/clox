@@ -8,6 +8,11 @@ typedef enum
 {
     OP_CONSTANT,
     OP_CONSTANT_LONG,
+    OP_NEGATE,
+    OP_ADD,
+    OP_SUBTRACT,
+    OP_MULTIPLY,
+    OP_DIVIDE,
     OP_RETURN,
 } OpCode;
 
@@ -25,8 +30,8 @@ typedef struct
 } LineStartArray;
 
 void init_line_start_array(LineStartArray *array);
-void write_line_start_array(LineStartArray *array, int offset, int line);
 void free_line_start_array(LineStartArray *array);
+void write_line_start_array(LineStartArray *array, int offset, int line);
 
 typedef struct
 {
@@ -38,10 +43,10 @@ typedef struct
 } Chunk;
 
 void init_chunk(Chunk *chunk);
+void free_chunk(Chunk *chunk);
 void write_chunk(Chunk *chunk, uint8_t byte, int line);
 void write_constant(Chunk *chunk, Value value, int line);
 int add_constant(Chunk *chunk, Value value);
 int get_line(Chunk *chunk, int offset);
-void free_chunk(Chunk *chunk);
 
 #endif
