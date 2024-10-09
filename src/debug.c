@@ -34,6 +34,7 @@ void disassemble_chunk(Chunk *chunk, const char *name)
     {
         offset = disassemble_instruction(chunk, offset);
     }
+    printf("== End of %s ==\n", name);
 }
 
 int disassemble_instruction(Chunk *chunk, int offset)

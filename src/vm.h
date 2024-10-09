@@ -24,8 +24,5 @@ typedef enum
 void init_vm(Vm *vm);
 void free_vm(Vm *vm);
 InterpretResult interpret(Vm *vm, const char *source);
-void push(Vm *vm, Value value);
-Value pop(Vm *vm);
-Value *top(Vm *vm);
 
 #endif

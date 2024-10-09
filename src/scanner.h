@@ -66,6 +66,7 @@ typedef struct
 } Token;
 
 void init_scanner(Scanner *scanner, const char *source);
+void free_scanner(Scanner *scanner);
 Token scan_token(Scanner *scanner);
 
 #endif

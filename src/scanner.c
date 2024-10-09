@@ -229,6 +229,11 @@ void init_scanner(Scanner *scanner, const char *source)
     scanner->line = 1;
 }
 
+void free_scanner(Scanner *scanner)
+{
+    // Nothing to do.
+}
+
 Token scan_token(Scanner *scanner)
 {
     skip_whitespace(scanner);

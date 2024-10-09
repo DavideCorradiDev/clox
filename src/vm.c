@@ -5,6 +5,23 @@
 #include "debug.h"
 #endif
 
+static void push(Vm *vm, Value value)
+{
+    *vm->stack_top = value;
+    vm->stack_top++;
+}
+
+static Value pop(Vm *vm)
+{
+    vm->stack_top--;
+    return *vm->stack_top;
+}
+
+static Value *top(Vm *vm)
+{
+    return vm->stack_top - 1;
+}
+
 static void reset_stack(Vm *vm)
 {
     vm->stack_top = (Value *)&vm->stack;
@@ -88,23 +105,20 @@ void free_vm(Vm *vm)
 
 InterpretResult interpret(Vm *vm, const char *source)
 {
-    compile(source);
-    return INTERPRET_OK;
-}
+    Chunk chunk;
+    init_chunk(&chunk);
 
-void push(Vm *vm, Value value)
-{
-    *vm->stack_top = value;
-    vm->stack_top++;
-}
+    if (!compile(&chunk, source))
+    {
+        free_chunk(&chunk);
+        return INTERPRET_COMPILE_ERROR;
+    }
 
-Value pop(Vm *vm)
-{
-    vm->stack_top--;
-    return *vm->stack_top;
-}
+    vm->chunk = &chunk;
+    vm->ip = vm->chunk->code;
 
-Value *top(Vm *vm)
-{
-    return vm->stack_top - 1;
+    InterpretResult result = run(vm);
+
+    free_chunk(&chunk);
+    return result;
 }
