@@ -10,6 +10,7 @@
     ],
     "asciidoc.antora.enableAntoraSupport": false,
     "files.associations": {
-        "chunk.h": "c"
+        "chunk.h": "c",
+        "compiler.h": "c"
     },
 }

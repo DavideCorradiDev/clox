@@ -3,9 +3,8 @@
 
 #include "common.h"
 
-typedef double Value;
-
 void print_value(Value value);
+bool values_equal(Value a, Value b);
 
 typedef struct
 {
