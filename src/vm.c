@@ -1,7 +1,12 @@
+#include "vm.h"
+
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+
 #include "compiler.h"
-#include "vm.h"
+#include "memory.h"
+#include "object.h"
 #ifdef DEBUG_TRACE_EXECUTION
 #include "debug.h"
 #endif
@@ -31,6 +36,20 @@ static Value peek(Vm *vm, int distance)
 static bool is_falsey(Value value)
 {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+
+static void concatenate(Vm *vm)
+{
+    ObjString *b = AS_STRING(pop(vm));
+    ObjString *a = AS_STRING(pop(vm));
+    int length = a->length + b->length;
+    char *chars = ALLOCATE(char, length + 1);
+    memcpy(chars, a->chars, a->length);
+    memcpy(chars + a->length, b->chars, b->length);
+    chars[length] = '\0';
+
+    ObjString *result = take_string(vm, chars, length);
+    push(vm, OBJ_VAL(result));
 }
 
 static void reset_stack(Vm *vm)
@@ -121,7 +140,21 @@ static InterpretResult run(Vm *vm)
             BINARY_OP(BOOL_VAL, <);
             break;
         case OP_ADD:
-            BINARY_OP(NUMBER_VAL, +);
+            if (IS_STRING(peek(vm, 0)) && IS_STRING(peek(vm, 1)))
+            {
+                concatenate(vm);
+            }
+            else if (IS_NUMBER(peek(vm, 0)) && IS_NUMBER(peek(vm, 1)))
+            {
+                double b = AS_NUMBER(pop(vm));
+                double a = AS_NUMBER(pop(vm));
+                push(vm, NUMBER_VAL(a + b));
+            }
+            else
+            {
+                runtime_error(vm, "Operands must be two numbers or two strings.");
+                return INTERPRET_RUNTIME_ERROR;
+            }
             break;
         case OP_SUBTRACT:
             BINARY_OP(NUMBER_VAL, -);
@@ -162,6 +195,7 @@ void init_vm(Vm *vm)
 
 void free_vm(Vm *vm)
 {
+    free_objects(vm);
 }
 
 InterpretResult interpret(Vm *vm, const char *source)
@@ -169,8 +203,12 @@ InterpretResult interpret(Vm *vm, const char *source)
     Chunk chunk;
     init_chunk(&chunk);
 
-    if (!compile(&chunk, source))
+    Compiler compiler;
+    init_compiler(&compiler, vm, &chunk, source);
+
+    if (!compile(&compiler))
     {
+        free_compiler(&compiler);
         free_chunk(&chunk);
         return INTERPRET_COMPILE_ERROR;
     }
@@ -180,6 +218,7 @@ InterpretResult interpret(Vm *vm, const char *source)
 
     InterpretResult result = run(vm);
 
+    free_compiler(&compiler);
     free_chunk(&chunk);
     return result;
 }

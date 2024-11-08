@@ -11,6 +11,19 @@
     "asciidoc.antora.enableAntoraSupport": false,
     "files.associations": {
         "chunk.h": "c",
-        "compiler.h": "c"
+        "compiler.h": "c",
+        "__bit_reference": "cpp",
+        "__node_handle": "cpp",
+        "bitset": "cpp",
+        "deque": "cpp",
+        "limits": "cpp",
+        "locale": "cpp",
+        "optional": "cpp",
+        "ratio": "cpp",
+        "tuple": "cpp",
+        "vector": "cpp",
+        "object.h": "c",
+        "memory.h": "c",
+        "string.h": "c"
     },
 }

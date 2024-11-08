@@ -2,9 +2,19 @@
 #include <stdlib.h>
 #include "compiler.h"
 #include "common.h"
+#include "object.h"
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
 #endif
+
+typedef void (*ParseFn)(Compiler *);
+
+typedef struct
+{
+    ParseFn prefix;
+    ParseFn infix;
+    Precedence precedence;
+} ParseRule;
 
 static void expression(Compiler *compiler);
 static ParseRule *get_rule(TokenType type);
@@ -138,6 +148,11 @@ static void number(Compiler *compiler)
     emit_constant(compiler, NUMBER_VAL(value));
 }
 
+static void string(Compiler *compiler)
+{
+    emit_constant(compiler, OBJ_VAL(copy_string(compiler->vm, compiler->parser.previous.start + 1, compiler->parser.previous.length - 2)));
+}
+
 static void unary(Compiler *compiler)
 {
     TokenType operator_type = compiler->parser.previous.type;
@@ -236,7 +251,7 @@ static ParseRule rules[] = {
     [TOKEN_LESS] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_IDENTIFIER] = {NULL, NULL, PREC_NONE},
-    [TOKEN_STRING] = {NULL, NULL, PREC_NONE},
+    [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
     [TOKEN_AND] = {NULL, NULL, PREC_NONE},
     [TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
@@ -273,10 +288,11 @@ void free_parser(Parser *parser)
     // Nothing to do.
 }
 
-void init_compiler(Compiler *compiler, Chunk *chunk, const char *source)
+void init_compiler(Compiler *compiler, Vm *vm, Chunk *chunk, const char *source)
 {
-    init_scanner(&(compiler->scanner), source);
-    init_parser(&(compiler->parser));
+    init_scanner(&compiler->scanner, source);
+    init_parser(&compiler->parser);
+    compiler->vm = vm;
     compiler->chunk = chunk;
 }
 
@@ -286,15 +302,12 @@ void free_compiler(Compiler *compiler)
     free_parser(&(compiler->parser));
 }
 
-bool compile(Chunk *chunk, const char *source)
+bool compile(Compiler *compiler)
 {
-    Compiler compiler;
-    init_compiler(&compiler, chunk, source);
+    advance(compiler);
+    expression(compiler);
+    consume(compiler, TOKEN_EOF, "Expect end of expression.");
+    end_compiler(compiler);
 
-    advance(&compiler);
-    expression(&compiler);
-    consume(&compiler, TOKEN_EOF, "Expect end of expression.");
-    end_compiler(&compiler);
-
-    return !compiler.parser.had_error;
+    return !compiler->parser.had_error;
 }

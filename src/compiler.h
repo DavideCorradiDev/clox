@@ -4,6 +4,7 @@
 #include "common.h"
 #include "chunk.h"
 #include "scanner.h"
+#include "vm.h"
 
 typedef struct
 {
@@ -35,21 +36,12 @@ typedef struct
 {
     Scanner scanner;
     Parser parser;
+    Vm *vm;
     Chunk *chunk;
 } Compiler;
 
-void init_compiler(Compiler *compiler, Chunk *chunk, const char *source);
+void init_compiler(Compiler *compiler, Vm *vm, Chunk *chunk, const char *source);
 void free_compiler(Compiler *compiler);
-
-typedef void (*ParseFn)(Compiler *);
-
-typedef struct
-{
-    ParseFn prefix;
-    ParseFn infix;
-    Precedence precedence;
-} ParseRule;
-
-bool compile(Chunk *chunk, const char *source);
+bool compile(Compiler *compiler);
 
 #endif
