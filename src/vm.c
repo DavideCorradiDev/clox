@@ -42,13 +42,13 @@ static void concatenate(Vm *vm)
 {
     ObjString *b = AS_STRING(pop(vm));
     ObjString *a = AS_STRING(pop(vm));
-
     int length = a->length + b->length;
-    ObjString *result = make_string(vm, length);
-    memcpy(result->chars, a->chars, a->length);
-    memcpy(result->chars + a->length, b->chars, b->length);
-    result->chars[length] = '\0';
+    char *chars = ALLOCATE(char, length + 1);
+    memcpy(chars, a->chars, a->length);
+    memcpy(chars + a->length, b->chars, b->length);
+    chars[length] = '\0';
 
+    ObjString *result = take_string(vm, chars, length);
     push(vm, OBJ_VAL(result));
 }
 
@@ -191,10 +191,13 @@ static InterpretResult run(Vm *vm)
 void init_vm(Vm *vm)
 {
     reset_stack(vm);
+    init_table(&vm->strings);
+    vm->objects = NULL;
 }
 
 void free_vm(Vm *vm)
 {
+    free_table(&vm->strings);
     free_objects(vm);
 }
 
