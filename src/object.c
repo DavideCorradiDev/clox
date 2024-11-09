@@ -16,14 +16,6 @@ static Obj *allocate_object(Vm *vm, size_t size, ObjType type)
     return object;
 }
 
-static ObjString *allocate_string(Vm *vm, char *chars, int length)
-{
-    ObjString *string = ALLOCATE_OBJ(vm, ObjString, OBJ_STRING);
-    string->length = length;
-    string->chars = chars;
-    return string;
-}
-
 void print_object(Value value)
 {
     switch (OBJ_TYPE(value))
@@ -34,15 +26,17 @@ void print_object(Value value)
     }
 }
 
-ObjString *take_string(Vm *vm, char *chars, int length)
+ObjString *make_string(Vm *vm, int length)
 {
-    return allocate_string(vm, chars, length);
+    ObjString *string = (ObjString *)allocate_object(vm, sizeof(ObjString) + length + 1, OBJ_STRING);
+    string->length = length;
+    return string;
 }
 
 ObjString *copy_string(Vm *vm, const char *chars, int length)
 {
-    char *heap_chars = ALLOCATE(char, length + 1);
-    memcpy(heap_chars, chars, length);
-    heap_chars[length] = '\0';
-    return allocate_string(vm, heap_chars, length);
+    ObjString *string = make_string(vm, length);
+    memcpy(string->chars, chars, length);
+    string->chars[length] = '\0';
+    return string;
 }

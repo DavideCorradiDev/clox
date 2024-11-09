@@ -30,10 +30,10 @@ struct ObjString
 {
     Obj obj;
     int length;
-    char *chars;
+    char chars[];
 };
 
-ObjString *take_string(Vm *vm, char *chars, int length);
+ObjString *make_string(Vm *vm, int length);
 ObjString *copy_string(Vm *vm, const char *chars, int length);
 
 static inline bool is_obj_type(Value value, ObjType type)
