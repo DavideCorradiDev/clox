@@ -74,6 +74,7 @@ static void runtime_error(Vm *vm, const char *format, ...)
 static InterpretResult run(Vm *vm)
 {
 #define READ_BYTE() (*vm->ip++)
+#define READ_SHORT() (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]))
 #define READ_3_BYTES() (READ_BYTE() | (READ_BYTE() << 8) | (READ_BYTE() << 16))
 #define READ_CONSTANT() (vm->chunk->constants.values[READ_BYTE()])
 #define READ_CONSTANT_LONG() (vm->chunk->constants.values[READ_3_BYTES()])
@@ -227,6 +228,27 @@ static InterpretResult run(Vm *vm)
             print_value(pop(vm));
             printf("\n");
             break;
+        case OP_JUMP:
+        {
+            uint16_t offset = READ_SHORT();
+            vm->ip += offset;
+            break;
+        }
+        case OP_JUMP_IF_FALSE:
+        {
+            uint16_t offset = READ_SHORT();
+            if (is_falsey(peek(vm, 0)))
+            {
+                vm->ip += offset;
+            }
+            break;
+        }
+        case OP_LOOP:
+        {
+            uint16_t offset = READ_SHORT();
+            vm->ip -= offset;
+            break;
+        }
         case OP_RETURN:
             return INTERPRET_OK;
         }
@@ -237,6 +259,7 @@ static InterpretResult run(Vm *vm)
 #undef READ_CONSTANT_LONG
 #undef READ_CONSTANT
 #undef READ_3_BYTES
+#undef READ_SHORT
 #undef READ_BYTE
 }
 
