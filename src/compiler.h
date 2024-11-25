@@ -34,10 +34,19 @@ typedef enum
 
 typedef struct
 {
+    Token name;
+    int depth;
+} Local;
+
+typedef struct
+{
     Scanner scanner;
     Parser parser;
     Vm *vm;
     Chunk *chunk;
+    Local locals[UINT8_COUNT];
+    int local_count;
+    int scope_depth;
 } Compiler;
 
 void init_compiler(Compiler *compiler, Vm *vm, Chunk *chunk, const char *source);
