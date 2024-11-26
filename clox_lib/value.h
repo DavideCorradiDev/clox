@@ -40,6 +40,7 @@ typedef struct
 #define OBJ_VAL(value) ((Value){VAL_OBJ, {.obj = (Obj *)value}})
 
 void print_value(Value value);
+void print_object(Value value);
 bool values_equal(Value a, Value b);
 
 typedef struct

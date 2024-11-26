@@ -1,0 +1,5 @@
+cc_binary(
+    name="clox",
+    srcs=glob(["*.c"]) + glob(["*.h"]),
+    deps=["//clox_lib"]
+)

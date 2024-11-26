@@ -1,10 +1,11 @@
-#include <stdlib.h>
-#include <string.h>
-
 #include "memory.h"
 #include "object.h"
 #include "table.h"
 #include "value.h"
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
 #define TABLE_MAX_LOAD 0.75
 
@@ -167,5 +168,20 @@ ObjString *table_find_string(Table *table, const char *chars, int length, uint32
             return entry->key;
         }
         index = (index + 1) % table->capacity;
+    }
+}
+
+void print_table(Table *table)
+{
+    for (int i = 0; i < table->capacity; ++i)
+    {
+        Entry *entry = &table->entries[i];
+        if (entry->key != NULL)
+        {
+            printf("[ ");
+            printf("%s -> ", entry->key->chars);
+            print_value(entry->value);
+            printf(" ]");
+        }
     }
 }

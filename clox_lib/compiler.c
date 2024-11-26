@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include "compiler.h"
 #include "common.h"
-#include "object.h"
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
 #endif
@@ -26,11 +25,11 @@ static void parse_precedence(Compiler *compiler, Precedence precedence);
 
 static void error_at(Compiler *compiler, Token *token, const char *message)
 {
-    if (compiler->parser.panic_mode)
+    if (compiler->parser->panic_mode)
     {
         return;
     }
-    compiler->parser.panic_mode = true;
+    compiler->parser->panic_mode = true;
 
     fprintf(stderr, "[line %d] Error", token->line);
 
@@ -47,46 +46,46 @@ static void error_at(Compiler *compiler, Token *token, const char *message)
         fprintf(stderr, " at '%.*s'", token->length, token->start);
     }
     fprintf(stderr, ": %s\n", message);
-    compiler->parser.had_error = true;
+    compiler->parser->had_error = true;
 }
 
 static void error_at_current(Compiler *compiler, const char *message)
 {
-    error_at(compiler, &(compiler->parser.current), message);
+    error_at(compiler, &(compiler->parser->current), message);
 }
 
 static void error(Compiler *compiler, const char *message)
 {
-    error_at(compiler, &(compiler->parser.previous), message);
+    error_at(compiler, &(compiler->parser->previous), message);
 }
 
 static void advance(Compiler *compiler)
 {
-    compiler->parser.previous = compiler->parser.current;
+    compiler->parser->previous = compiler->parser->current;
     for (;;)
     {
-        compiler->parser.current = scan_token(&compiler->scanner);
-        if (compiler->parser.current.type != TOKEN_ERROR)
+        compiler->parser->current = scan_token(compiler->scanner);
+        if (compiler->parser->current.type != TOKEN_ERROR)
         {
             break;
         }
-        error_at_current(compiler, compiler->parser.current.start);
+        error_at_current(compiler, compiler->parser->current.start);
     }
 }
 
 static void consume(Compiler *compiler, TokenType type, const char *message)
 {
-    if (compiler->parser.current.type == type)
+    if (compiler->parser->current.type == type)
     {
         advance(compiler);
         return;
     }
-    error_at(compiler, &(compiler->parser.current), message);
+    error_at(compiler, &(compiler->parser->current), message);
 }
 
 static bool check(Compiler *compiler, TokenType type)
 {
-    return compiler->parser.current.type == type;
+    return compiler->parser->current.type == type;
 }
 
 static bool match(Compiler *compiler, TokenType type)
@@ -101,7 +100,7 @@ static bool match(Compiler *compiler, TokenType type)
 
 static void emit_byte(Compiler *compiler, uint8_t byte)
 {
-    write_chunk(compiler->chunk, byte, compiler->parser.previous.line);
+    write_chunk(current_chunk(compiler), byte, compiler->parser->previous.line);
 }
 
 static void emit_bytes(Compiler *compiler, uint8_t byte1, uint8_t byte2)
@@ -114,7 +113,7 @@ static void emit_loop(Compiler *compiler, int loop_start)
 {
     emit_byte(compiler, OP_LOOP);
 
-    int offset = compiler->chunk->count - loop_start + 2;
+    int offset = current_chunk(compiler)->count - loop_start + 2;
     if (offset > UINT16_MAX)
     {
         error(compiler, "Loop body too large.");
@@ -129,41 +128,44 @@ static int emit_jump(Compiler *compiler, uint8_t instruction)
     emit_byte(compiler, instruction);
     emit_byte(compiler, 0xff);
     emit_byte(compiler, 0xff);
-    return compiler->chunk->count - 2;
+    return current_chunk(compiler)->count - 2;
 }
 
 static void emit_return(Compiler *compiler)
 {
+    emit_byte(compiler, OP_NIL);
     emit_byte(compiler, OP_RETURN);
 }
 
 static void emit_constant(Compiler *compiler, Value value)
 {
-    write_constant(compiler->chunk, value, compiler->parser.previous.line);
+    write_constant(current_chunk(compiler), value, compiler->parser->previous.line);
 }
 
 static void patch_jump(Compiler *compiler, int offset)
 {
-    int jump = compiler->chunk->count - offset - 2;
+    int jump = current_chunk(compiler)->count - offset - 2;
 
     if (jump > UINT16_MAX)
     {
         error(compiler, "Too much code to jump over.");
     }
 
-    compiler->chunk->code[offset] = (jump >> 8) & 0xff;
-    compiler->chunk->code[offset + 1] = jump & 0xff;
+    current_chunk(compiler)->code[offset] = (jump >> 8) & 0xff;
+    current_chunk(compiler)->code[offset + 1] = jump & 0xff;
 }
 
-static void end_compiler(Compiler *compiler)
+static ObjFunction *end_compiler(Compiler *compiler)
 {
     emit_return(compiler);
+    ObjFunction *function = compiler->function;
 #ifdef DEBUG_PRINT_CODE
-    if (!compiler->parser.had_error)
+    if (!compiler->parser->had_error)
     {
-        disassemble_chunk(compiler->chunk, "code");
+        disassemble_chunk(current_chunk(compiler), function->name != NULL ? function->name->chars : "<script>");
     }
 #endif
+    return function;
 }
 
 static void begin_scope(Compiler *compiler)
@@ -185,7 +187,7 @@ static void end_scope(Compiler *compiler)
 static void parse_precedence(Compiler *compiler, Precedence precedence)
 {
     advance(compiler);
-    ParseFn prefix_rule = get_rule(compiler->parser.previous.type)->prefix;
+    ParseFn prefix_rule = get_rule(compiler->parser->previous.type)->prefix;
     if (prefix_rule == NULL)
     {
         error(compiler, "Expect expression.");
@@ -194,10 +196,10 @@ static void parse_precedence(Compiler *compiler, Precedence precedence)
     bool can_assign = precedence <= PREC_ASSIGNMENT;
     prefix_rule(compiler, can_assign);
 
-    while (precedence <= get_rule(compiler->parser.current.type)->precedence)
+    while (precedence <= get_rule(compiler->parser->current.type)->precedence)
     {
         advance(compiler);
-        ParseFn infix_rule = get_rule(compiler->parser.previous.type)->infix;
+        ParseFn infix_rule = get_rule(compiler->parser->previous.type)->infix;
         infix_rule(compiler, can_assign);
     }
 
@@ -209,7 +211,7 @@ static void parse_precedence(Compiler *compiler, Precedence precedence)
 
 static uint8_t identifier_constant(Compiler *compiler, Token *name)
 {
-    return add_constant(compiler->chunk, OBJ_VAL(copy_string(compiler->vm, name->start, name->length)));
+    return add_constant(current_chunk(compiler), OBJ_VAL(copy_string(compiler->vm, name->start, name->length)));
 }
 
 static bool identifiers_equal(Token *a, Token *b)
@@ -257,7 +259,7 @@ static void declare_variable(Compiler *compiler)
     {
         return;
     }
-    Token *name = &compiler->parser.previous;
+    Token *name = &compiler->parser->previous;
     for (int i = compiler->local_count - 1; i >= 0; i--)
     {
         Local *local = &compiler->locals[i];
@@ -281,11 +283,15 @@ static uint8_t parse_variable(Compiler *compiler, const char *error_message)
     {
         return 0;
     }
-    return identifier_constant(compiler, &compiler->parser.previous);
+    return identifier_constant(compiler, &compiler->parser->previous);
 }
 
 static void mark_initialized(Compiler *compiler)
 {
+    if (compiler->scope_depth == 0)
+    {
+        return;
+    }
     compiler->locals[compiler->local_count - 1].depth = compiler->scope_depth;
 }
 
@@ -297,6 +303,25 @@ static void define_variable(Compiler *compiler, uint8_t global)
         return;
     }
     emit_bytes(compiler, OP_DEFINE_GLOBAL, global);
+}
+
+static uint8_t argument_list(Compiler *compiler)
+{
+    uint8_t arg_count = 0;
+    if (!check(compiler, TOKEN_RIGHT_PAREN))
+    {
+        do
+        {
+            expression(compiler);
+            if (arg_count == 255)
+            {
+                error(compiler, "Can't have more than 255 arguments.");
+            }
+            arg_count++;
+        } while (match(compiler, TOKEN_COMMA));
+    }
+    consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+    return arg_count;
 }
 
 static void and_(Compiler *compiler, bool can_assign)
@@ -329,6 +354,44 @@ static void block(Compiler *compiler)
         declaration(compiler);
     }
     consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
+static void function(Compiler *compiler, FunctionType type)
+{
+    Compiler sub_compiler;
+    init_compiler(&sub_compiler, compiler->scanner, compiler->parser, compiler->vm, type);
+    begin_scope(&sub_compiler);
+
+    consume(&sub_compiler, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+    if (!check(&sub_compiler, TOKEN_RIGHT_PAREN))
+    {
+        do
+        {
+            sub_compiler.function->arity++;
+            if (sub_compiler.function->arity > 255)
+            {
+                error_at_current(&sub_compiler, "Can't have more than 255 parameters.");
+            }
+            uint8_t constant = parse_variable(&sub_compiler, "Expect parameter name.");
+            define_variable(&sub_compiler, constant);
+        } while (match(&sub_compiler, TOKEN_COMMA));
+    }
+    consume(&sub_compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    consume(&sub_compiler, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+    block(&sub_compiler);
+
+    ObjFunction *function = end_compiler(&sub_compiler);
+    free_compiler(&sub_compiler);
+
+    emit_bytes(compiler, OP_CONSTANT, add_constant(current_chunk(compiler), OBJ_VAL(function)));
+}
+
+static void fun_declaration(Compiler *compiler)
+{
+    uint8_t global = parse_variable(compiler, "Expect function name.");
+    mark_initialized(compiler);
+    function(compiler, TYPE_FUNCTION);
+    define_variable(compiler, global);
 }
 
 static void var_declaration(Compiler *compiler)
@@ -380,7 +443,7 @@ static void if_statement(Compiler *compiler)
 
 static void while_statement(Compiler *compiler)
 {
-    int loop_start = compiler->chunk->count;
+    int loop_start = current_chunk(compiler)->count;
 
     consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     expression(compiler);
@@ -413,7 +476,7 @@ static void for_statement(Compiler *compiler)
         expression_statement(compiler);
     }
 
-    int loop_start = compiler->chunk->count;
+    int loop_start = current_chunk(compiler)->count;
     int exit_jump = -1;
     if (!match(compiler, TOKEN_SEMICOLON))
     {
@@ -426,7 +489,7 @@ static void for_statement(Compiler *compiler)
     if (!match(compiler, TOKEN_RIGHT_PAREN))
     {
         int body_jump = emit_jump(compiler, OP_JUMP);
-        int increment_start = compiler->chunk->count;
+        int increment_start = current_chunk(compiler)->count;
         expression(compiler);
         emit_byte(compiler, OP_POP);
         consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
@@ -455,9 +518,28 @@ static void print_statement(Compiler *compiler)
     emit_byte(compiler, OP_PRINT);
 }
 
+static void return_statement(Compiler *compiler)
+{
+    if (compiler->type == TYPE_SCRIPT)
+    {
+        error(compiler, "Can't return from top-level code.");
+    }
+
+    if (match(compiler, TOKEN_SEMICOLON))
+    {
+        emit_return(compiler);
+    }
+    else
+    {
+        expression(compiler);
+        consume(compiler, TOKEN_SEMICOLON, "Expect ';' after return value.");
+        emit_byte(compiler, OP_RETURN);
+    }
+}
+
 static void synchronize(Compiler *compiler)
 {
-    Parser *parser = &compiler->parser;
+    Parser *parser = compiler->parser;
     parser->panic_mode = false;
     while (parser->current.type != TOKEN_EOF)
     {
@@ -484,7 +566,11 @@ static void synchronize(Compiler *compiler)
 
 static void declaration(Compiler *compiler)
 {
-    if (match(compiler, TOKEN_VAR))
+    if (match(compiler, TOKEN_FUN))
+    {
+        fun_declaration(compiler);
+    }
+    else if (match(compiler, TOKEN_VAR))
     {
         var_declaration(compiler);
     }
@@ -492,7 +578,7 @@ static void declaration(Compiler *compiler)
     {
         statement(compiler);
     }
-    if (compiler->parser.panic_mode)
+    if (compiler->parser->panic_mode)
     {
         synchronize(compiler);
     }
@@ -507,6 +593,10 @@ static void statement(Compiler *compiler)
     else if (match(compiler, TOKEN_IF))
     {
         if_statement(compiler);
+    }
+    else if (match(compiler, TOKEN_RETURN))
+    {
+        return_statement(compiler);
     }
     else if (match(compiler, TOKEN_WHILE))
     {
@@ -536,13 +626,13 @@ static void grouping(Compiler *compiler, bool can_assign)
 
 static void number(Compiler *compiler, bool can_assign)
 {
-    double value = strtod(compiler->parser.previous.start, NULL);
+    double value = strtod(compiler->parser->previous.start, NULL);
     emit_constant(compiler, NUMBER_VAL(value));
 }
 
 static void string(Compiler *compiler, bool can_assign)
 {
-    emit_constant(compiler, OBJ_VAL(copy_string(compiler->vm, compiler->parser.previous.start + 1, compiler->parser.previous.length - 2)));
+    emit_constant(compiler, OBJ_VAL(copy_string(compiler->vm, compiler->parser->previous.start + 1, compiler->parser->previous.length - 2)));
 }
 
 static void named_variable(Compiler *compiler, Token name, bool can_assign)
@@ -574,12 +664,12 @@ static void named_variable(Compiler *compiler, Token name, bool can_assign)
 
 static void variable(Compiler *compiler, bool can_assign)
 {
-    named_variable(compiler, compiler->parser.previous, can_assign);
+    named_variable(compiler, compiler->parser->previous, can_assign);
 }
 
 static void unary(Compiler *compiler, bool can_assign)
 {
-    TokenType operator_type = compiler->parser.previous.type;
+    TokenType operator_type = compiler->parser->previous.type;
     parse_precedence(compiler, PREC_UNARY);
     switch (operator_type)
     {
@@ -596,7 +686,7 @@ static void unary(Compiler *compiler, bool can_assign)
 
 static void binary(Compiler *compiler, bool can_assign)
 {
-    TokenType operator_type = compiler->parser.previous.type;
+    TokenType operator_type = compiler->parser->previous.type;
     ParseRule *rule = get_rule(operator_type);
     parse_precedence(compiler, (Precedence)(rule->precedence + 1));
     switch (operator_type)
@@ -636,9 +726,15 @@ static void binary(Compiler *compiler, bool can_assign)
     }
 }
 
+static void call(Compiler *compiler, bool can_assign)
+{
+    uint8_t arg_count = argument_list(compiler);
+    emit_bytes(compiler, OP_CALL, arg_count);
+}
+
 static void literal(Compiler *compiler, bool can_assign)
 {
-    switch (compiler->parser.previous.type)
+    switch (compiler->parser->previous.type)
     {
     case TOKEN_FALSE:
         emit_byte(compiler, OP_FALSE);
@@ -655,7 +751,7 @@ static void literal(Compiler *compiler, bool can_assign)
 }
 
 static ParseRule rules[] = {
-    [TOKEN_LEFT_PAREN] = {grouping, NULL, PREC_NONE},
+    [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
     [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
@@ -712,30 +808,44 @@ void free_parser(Parser *parser)
     // Nothing to do.
 }
 
-void init_compiler(Compiler *compiler, Vm *vm, Chunk *chunk, const char *source)
+void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm, FunctionType type)
 {
-    init_scanner(&compiler->scanner, source);
-    init_parser(&compiler->parser);
+    compiler->scanner = scanner;
+    compiler->parser = parser;
     compiler->vm = vm;
-    compiler->chunk = chunk;
+    compiler->function = new_function(vm);
+    compiler->type = type;
     compiler->local_count = 0;
     compiler->scope_depth = 0;
+
+    if (type != TYPE_SCRIPT)
+    {
+        compiler->function->name = copy_string(compiler->vm, compiler->parser->previous.start, compiler->parser->previous.length);
+    }
+
+    Local *local = &compiler->locals[compiler->local_count++];
+    local->depth = 0;
+    local->name.start = "";
+    local->name.length = 0;
 }
 
 void free_compiler(Compiler *compiler)
 {
-    free_scanner(&(compiler->scanner));
-    free_parser(&(compiler->parser));
 }
 
-bool compile(Compiler *compiler)
+Chunk *current_chunk(Compiler *compiler)
+{
+    return &compiler->function->chunk;
+}
+
+ObjFunction *compile(Compiler *compiler)
 {
     advance(compiler);
     while (!match(compiler, TOKEN_EOF))
     {
         declaration(compiler);
     }
-    end_compiler(compiler);
+    ObjFunction *function = end_compiler(compiler);
 
-    return !compiler->parser.had_error;
+    return compiler->parser->had_error ? NULL : function;
 }

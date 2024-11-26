@@ -25,6 +25,11 @@
         "object.h": "c",
         "memory.h": "c",
         "string.h": "c",
-        "value.h": "c"
+        "value.h": "c",
+        "common.h": "c",
+        "table.h": "c",
+        "__locale": "cpp",
+        "string": "cpp",
+        "string_view": "cpp"
     },
 }

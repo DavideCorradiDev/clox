@@ -22,6 +22,18 @@ static void free_object(Obj *object)
 {
     switch (object->type)
     {
+    case OBJ_FUNCTION:
+    {
+        ObjFunction *function = (ObjFunction *)object;
+        free_chunk(&function->chunk);
+        FREE(ObjFunction, object);
+        break;
+    }
+    case OBJ_NATIVE:
+    {
+        FREE(ObjNative, object);
+        break;
+    }
     case OBJ_STRING:
     {
         ObjString *string = (ObjString *)object;

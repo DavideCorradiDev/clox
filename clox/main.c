@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "common.h"
-#include "vm.h"
+#include "clox_lib/common.h"
+#include "clox_lib/vm.h"
 
 static void repl(Vm *vm)
 {
@@ -83,6 +83,7 @@ int main(int argc, const char *argv[])
     else
     {
         fprintf(stderr, "Usage: clox [path]\n");
+        free_vm(&vm);
         exit(64);
     }
 

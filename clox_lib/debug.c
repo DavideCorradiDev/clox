@@ -48,6 +48,13 @@ void disassemble_chunk(Chunk *chunk, const char *name)
     {
         offset = disassemble_instruction(chunk, offset);
     }
+    printf("Constants:\n");
+    for (int i = 0; i < chunk->constants.count; ++i)
+    {
+        printf("%04d    | ", i);
+        print_value(chunk->constants.values[i]);
+        printf("\n");
+    }
     printf("== %s end ==\n", name);
 }
 
@@ -116,6 +123,8 @@ int disassemble_instruction(Chunk *chunk, int offset)
         return jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
     case OP_LOOP:
         return jump_instruction("OP_LOOP", -1, chunk, offset);
+    case OP_CALL:
+        return byte_instruction("OP_CALL", chunk, offset);
     case OP_RETURN:
         return simple_instruction("OP_RETURN", offset);
     default:

@@ -1,0 +1,6 @@
+cc_library(
+    name="clox_lib",
+    hdrs=glob(["*.h"]),
+    srcs=glob(["*.c"]),
+    visibility=["//visibility:public"],
+)

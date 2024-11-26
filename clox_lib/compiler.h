@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "chunk.h"
+#include "object.h"
 #include "scanner.h"
 #include "vm.h"
 
@@ -38,19 +39,27 @@ typedef struct
     int depth;
 } Local;
 
+typedef enum
+{
+    TYPE_FUNCTION,
+    TYPE_SCRIPT,
+} FunctionType;
+
 typedef struct
 {
-    Scanner scanner;
-    Parser parser;
+    Scanner *scanner;
+    Parser *parser;
     Vm *vm;
-    Chunk *chunk;
+    ObjFunction *function;
+    FunctionType type;
     Local locals[UINT8_COUNT];
     int local_count;
     int scope_depth;
 } Compiler;
 
-void init_compiler(Compiler *compiler, Vm *vm, Chunk *chunk, const char *source);
+void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm, FunctionType type);
 void free_compiler(Compiler *compiler);
-bool compile(Compiler *compiler);
+Chunk *current_chunk(Compiler *compiler);
+ObjFunction *compile(Compiler *compiler);
 
 #endif
