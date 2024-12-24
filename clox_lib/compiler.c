@@ -383,7 +383,7 @@ static void function(Compiler *compiler, FunctionType type)
     ObjFunction *function = end_compiler(&sub_compiler);
     free_compiler(&sub_compiler);
 
-    emit_bytes(compiler, OP_CONSTANT, add_constant(current_chunk(compiler), OBJ_VAL(function)));
+    emit_bytes(compiler, OP_CLOSURE, add_constant(current_chunk(compiler), OBJ_VAL(function)));
 }
 
 static void fun_declaration(Compiler *compiler)

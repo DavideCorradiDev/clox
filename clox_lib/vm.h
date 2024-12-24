@@ -11,12 +11,12 @@
 
 typedef struct
 {
-    ObjFunction *function;
+    ObjClosure *closure;
     uint8_t *ip;
     Value *slots;
 } CallFrame;
 
-typedef struct
+typedef struct Vm
 {
     CallFrame frames[FRAMES_MAX];
     int frame_count;
@@ -39,7 +39,8 @@ void free_vm(Vm *vm);
 InterpretResult interpret(Vm *vm, const char *source);
 
 ObjFunction *new_function(Vm *vm);
-ObjNative *new_native(Vm *vm, NativeFn function);
+ObjNative *new_native(Vm *vm, int arity, NativeFn function);
+ObjClosure *new_closure(Vm *vm, ObjFunction *function);
 ObjString *take_string(Vm *vm, char *chars, int length);
 ObjString *copy_string(Vm *vm, const char *chars, int length);
 

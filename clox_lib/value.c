@@ -44,6 +44,9 @@ void print_object(Value value)
     case OBJ_NATIVE:
         printf("<native fn>");
         break;
+    case OBJ_CLOSURE:
+        print_function(AS_CLOSURE(value)->function);
+        break;
     case OBJ_STRING:
         printf("%s", AS_CSTRING(value));
         break;
