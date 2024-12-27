@@ -1,7 +1,6 @@
 #ifndef CLOX_VM_H
 #define CLOX_VM_H
 
-#include "chunk.h"
 #include "object.h"
 #include "table.h"
 #include "value.h"
@@ -9,7 +8,7 @@
 #define FRAMES_MAX 64
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
-typedef struct
+typedef struct CallFrame
 {
     ObjClosure *closure;
     uint8_t *ip;
@@ -24,6 +23,7 @@ typedef struct Vm
     Value *stack_top;
     Table globals;
     Table strings;
+    ObjUpvalue *open_upvalues;
     Obj *objects;
 } Vm;
 
@@ -37,11 +37,5 @@ typedef enum
 void init_vm(Vm *vm);
 void free_vm(Vm *vm);
 InterpretResult interpret(Vm *vm, const char *source);
-
-ObjFunction *new_function(Vm *vm);
-ObjNative *new_native(Vm *vm, int arity, NativeFn function);
-ObjClosure *new_closure(Vm *vm, ObjFunction *function);
-ObjString *take_string(Vm *vm, char *chars, int length);
-ObjString *copy_string(Vm *vm, const char *chars, int length);
 
 #endif

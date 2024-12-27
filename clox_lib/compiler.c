@@ -179,7 +179,14 @@ static void end_scope(Compiler *compiler)
 
     while (compiler->local_count > 0 && compiler->locals[compiler->local_count - 1].depth > compiler->scope_depth)
     {
-        emit_byte(compiler, OP_POP);
+        if (compiler->locals[compiler->local_count - 1].is_captured)
+        {
+            emit_byte(compiler, OP_CLOSE_UPVALUE);
+        }
+        else
+        {
+            emit_byte(compiler, OP_POP);
+        }
         compiler->local_count--;
     }
 }
@@ -240,6 +247,53 @@ static int resolve_local(Compiler *compiler, Token *name)
     return -1;
 }
 
+static int add_upvalue(Compiler *compiler, uint8_t index, bool is_local)
+{
+    int upvalue_count = compiler->function->upvalue_count;
+
+    for (int i = 0; i < upvalue_count; i++)
+    {
+        Upvalue *upvalue = &compiler->upvalues[i];
+        if ((upvalue->index == index) && (upvalue->is_local == is_local))
+        {
+            return i;
+        }
+    }
+
+    if (upvalue_count == UINT8_COUNT)
+    {
+        error(compiler, "Too many closure variables in function.");
+        return 0;
+    }
+
+    compiler->upvalues[upvalue_count].is_local = is_local;
+    compiler->upvalues[upvalue_count].index = index;
+    return compiler->function->upvalue_count++;
+}
+
+static int resolve_upvalue(Compiler *compiler, Token *name)
+{
+    if (compiler->enclosing == NULL)
+    {
+        return -1;
+    }
+
+    int local = resolve_local(compiler->enclosing, name);
+    if (local != -1)
+    {
+        compiler->enclosing->locals[local].is_captured = true;
+        return add_upvalue(compiler, (uint8_t)local, true);
+    }
+
+    int upvalue = resolve_upvalue(compiler->enclosing, name);
+    if (upvalue != -1)
+    {
+        return add_upvalue(compiler, (uint8_t)upvalue, false);
+    }
+
+    return -1;
+}
+
 static void add_local(Compiler *compiler, Token *name)
 {
     if (compiler->local_count == UINT8_COUNT)
@@ -251,6 +305,7 @@ static void add_local(Compiler *compiler, Token *name)
     Local *local = &compiler->locals[compiler->local_count++];
     local->name = *name;
     local->depth = -1;
+    local->is_captured = false;
 }
 
 static void declare_variable(Compiler *compiler)
@@ -360,6 +415,7 @@ static void function(Compiler *compiler, FunctionType type)
 {
     Compiler sub_compiler;
     init_compiler(&sub_compiler, compiler->scanner, compiler->parser, compiler->vm, type);
+    sub_compiler.enclosing = compiler;
     begin_scope(&sub_compiler);
 
     consume(&sub_compiler, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
@@ -384,6 +440,11 @@ static void function(Compiler *compiler, FunctionType type)
     free_compiler(&sub_compiler);
 
     emit_bytes(compiler, OP_CLOSURE, add_constant(current_chunk(compiler), OBJ_VAL(function)));
+    for (int i = 0; i < function->upvalue_count; i++)
+    {
+        emit_byte(compiler, sub_compiler.upvalues[i].is_local ? 1 : 0);
+        emit_byte(compiler, sub_compiler.upvalues[i].index);
+    }
 }
 
 static void fun_declaration(Compiler *compiler)
@@ -645,6 +706,11 @@ static void named_variable(Compiler *compiler, Token name, bool can_assign)
         get_op = OP_GET_LOCAL;
         set_op = OP_SET_LOCAL;
     }
+    else if ((arg = resolve_upvalue(compiler, &name)) != -1)
+    {
+        get_op = OP_GET_UPVALUE;
+        set_op = OP_SET_UPVALUE;
+    }
     else
     {
         arg = identifier_constant(compiler, &name);
@@ -810,6 +876,7 @@ void free_parser(Parser *parser)
 
 void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm, FunctionType type)
 {
+    compiler->enclosing = NULL;
     compiler->scanner = scanner;
     compiler->parser = parser;
     compiler->vm = vm;
@@ -825,6 +892,7 @@ void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm,
 
     Local *local = &compiler->locals[compiler->local_count++];
     local->depth = 0;
+    local->is_captured = false;
     local->name.start = "";
     local->name.length = 0;
 }

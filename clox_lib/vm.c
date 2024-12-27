@@ -1,10 +1,7 @@
 #include "vm.h"
 
 #include "compiler.h"
-#include "object.h"
 #include "memory.h"
-#include "table.h"
-#include "value.h"
 #ifdef DEBUG_TRACE_EXECUTION
 #include "debug.h"
 #endif
@@ -47,6 +44,7 @@ static void reset_stack(Vm *vm)
 {
     vm->stack_top = (Value *)&vm->stack;
     vm->frame_count = 0;
+    vm->open_upvalues = NULL;
 }
 
 static void runtime_error(Vm *vm, const char *format, ...)
@@ -142,6 +140,45 @@ static bool call_value(Vm *vm, Value callee, int arg_count)
     }
     runtime_error(vm, "Can only call functions and classes.");
     return false;
+}
+
+static ObjUpvalue *capture_upvalue(Vm *vm, Value *local)
+{
+    ObjUpvalue *prev_upvalue = NULL;
+    ObjUpvalue *upvalue = vm->open_upvalues;
+    while (upvalue != NULL && upvalue->location > local)
+    {
+        prev_upvalue = upvalue;
+        upvalue = upvalue->next;
+    }
+
+    if (upvalue != NULL && upvalue->location == local)
+    {
+        return upvalue;
+    }
+
+    ObjUpvalue *created_upvalue = new_upvalue(vm, local);
+    created_upvalue->next = upvalue;
+    if (prev_upvalue == NULL)
+    {
+        vm->open_upvalues = created_upvalue;
+    }
+    else
+    {
+        prev_upvalue->next = created_upvalue;
+    }
+    return created_upvalue;
+}
+
+static void close_upvalues(Vm *vm, Value *last)
+{
+    while (vm->open_upvalues != NULL && vm->open_upvalues->location >= last)
+    {
+        ObjUpvalue *upvalue = vm->open_upvalues;
+        upvalue->closed = *upvalue->location;
+        upvalue->location = &upvalue->closed;
+        vm->open_upvalues = upvalue->next;
+    }
 }
 
 static bool is_falsey(Value value)
@@ -280,6 +317,18 @@ static InterpretResult run(Vm *vm)
         case OP_POP:
             pop(vm);
             break;
+        case OP_GET_UPVALUE:
+        {
+            uint8_t slot = READ_BYTE();
+            push(vm, *frame->closure->upvalues[slot]->location);
+            break;
+        }
+        case OP_SET_UPVALUE:
+        {
+            uint8_t slot = READ_BYTE();
+            *frame->closure->upvalues[slot]->location = peek(vm, 0);
+            break;
+        }
         case OP_EQUAL:
         {
             Value b = pop(vm);
@@ -374,11 +423,31 @@ static InterpretResult run(Vm *vm)
             ObjFunction *function = AS_FUNCTION(READ_CONSTANT());
             ObjClosure *closure = new_closure(vm, function);
             push(vm, OBJ_VAL(closure));
+            for (int i = 0; i < closure->upvalue_count; i++)
+            {
+                uint8_t is_local = READ_BYTE();
+                uint8_t index = READ_BYTE();
+                if (is_local)
+                {
+                    closure->upvalues[i] = capture_upvalue(vm, frame->slots + index);
+                }
+                else
+                {
+                    closure->upvalues[i] = frame->closure->upvalues[index];
+                }
+            }
+            break;
+        }
+        case OP_CLOSE_UPVALUE:
+        {
+            close_upvalues(vm, vm->stack_top - 1);
+            pop(vm);
             break;
         }
         case OP_RETURN:
         {
             Value result = pop(vm);
+            close_upvalues(vm, frame->slots);
             vm->frame_count--;
             if (vm->frame_count == 0)
             {
@@ -402,39 +471,6 @@ static InterpretResult run(Vm *vm)
 #undef READ_3_BYTES
 #undef READ_SHORT
 #undef READ_BYTE
-}
-
-#define ALLOCATE_OBJ(vm, type, object_type) \
-    (type *)allocate_object(vm, sizeof(type), object_type)
-
-static Obj *allocate_object(Vm *vm, size_t size, ObjType type)
-{
-    Obj *object = (Obj *)reallocate(NULL, 0, size);
-    object->type = type;
-    object->next = vm->objects;
-    vm->objects = object;
-    return object;
-}
-
-static ObjString *allocate_string(Vm *vm, char *chars, int length, uint32_t hash)
-{
-    ObjString *string = ALLOCATE_OBJ(vm, ObjString, OBJ_STRING);
-    string->length = length;
-    string->hash = hash;
-    string->chars = chars;
-    table_set(&vm->strings, string, NIL_VAL);
-    return string;
-}
-
-static uint32_t hash_string(const char *chars, int length)
-{
-    uint32_t hash = 2166136261u;
-    for (int i = 0; i < length; i++)
-    {
-        hash ^= (uint8_t)chars[i];
-        hash *= 16777691;
-    }
-    return hash;
 }
 
 void init_vm(Vm *vm)
@@ -485,54 +521,4 @@ InterpretResult interpret(Vm *vm, const char *source)
     free_scanner(&scanner);
     free_parser(&parser);
     return result;
-}
-
-ObjFunction *new_function(Vm *vm)
-{
-    ObjFunction *function = ALLOCATE_OBJ(vm, ObjFunction, OBJ_FUNCTION);
-    function->arity = 0;
-    function->name = NULL;
-    init_chunk(&function->chunk);
-    return function;
-}
-
-ObjNative *new_native(Vm *vm, int arity, NativeFn function)
-{
-    ObjNative *native = ALLOCATE_OBJ(vm, ObjNative, OBJ_NATIVE);
-    native->arity = arity;
-    native->function = function;
-    return native;
-}
-
-ObjClosure *new_closure(Vm *vm, ObjFunction *function)
-{
-    ObjClosure *closure = ALLOCATE_OBJ(vm, ObjClosure, OBJ_CLOSURE);
-    closure->function = function;
-    return closure;
-}
-
-ObjString *take_string(Vm *vm, char *chars, int length)
-{
-    uint32_t hash = hash_string(chars, length);
-    ObjString *interned = table_find_string(&vm->strings, chars, length, hash);
-    if (interned != NULL)
-    {
-        FREE_ARRAY(char, chars, length + 1);
-        return interned;
-    }
-    return allocate_string(vm, chars, length, hash);
-}
-
-ObjString *copy_string(Vm *vm, const char *chars, int length)
-{
-    uint32_t hash = hash_string(chars, length);
-    ObjString *interned = table_find_string(&vm->strings, chars, length, hash);
-    if (interned != NULL)
-    {
-        return interned;
-    }
-    char *heap_chars = ALLOCATE(char, length + 1);
-    memcpy(heap_chars, chars, length);
-    heap_chars[length] = '\0';
-    return allocate_string(vm, heap_chars, length, hash);
 }
