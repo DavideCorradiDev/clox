@@ -51,9 +51,9 @@ typedef struct
     LineStart *values;
 } LineStartArray;
 
-void init_line_start_array(LineStartArray *array);
-void free_line_start_array(LineStartArray *array);
-void write_line_start_array(LineStartArray *array, int offset, int line);
+void init_line_start_array(Vm *vm, LineStartArray *array);
+void free_line_start_array(Vm *vm, LineStartArray *array);
+void write_line_start_array(Vm *vm, LineStartArray *array, int offset, int line);
 
 typedef struct
 {
@@ -64,11 +64,11 @@ typedef struct
     ValueArray constants;
 } Chunk;
 
-void init_chunk(Chunk *chunk);
-void free_chunk(Chunk *chunk);
-void write_chunk(Chunk *chunk, uint8_t byte, int line);
-void write_constant(Chunk *chunk, Value value, int line);
-int add_constant(Chunk *chunk, Value value);
+void init_chunk(Vm *vm, Chunk *chunk);
+void free_chunk(Vm *vm, Chunk *chunk);
+void write_chunk(Vm *vm, Chunk *chunk, uint8_t byte, int line);
+void write_constant(Vm *vm, Chunk *chunk, Value value, int line);
+int add_constant(Vm *vm, Chunk *chunk, Value value);
 int get_line(Chunk *chunk, int offset);
 
 #endif

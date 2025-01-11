@@ -70,5 +70,6 @@ void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm,
 void free_compiler(Compiler *compiler);
 Chunk *current_chunk(Compiler *compiler);
 ObjFunction *compile(Compiler *compiler);
+void mark_compiler_roots(Compiler *compiler);
 
 #endif

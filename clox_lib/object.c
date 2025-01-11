@@ -3,16 +3,23 @@
 #include "vm.h"
 
 #include <string.h>
+#ifdef DEBUG_LOG_GC
+#include <stdio.h>
+#endif
 
 #define ALLOCATE_OBJ(vm, type, object_type) \
     (type *)allocate_object(vm, sizeof(type), object_type)
 
 static Obj *allocate_object(Vm *vm, size_t size, ObjType type)
 {
-    Obj *object = (Obj *)reallocate(NULL, 0, size);
+    Obj *object = (Obj *)reallocate(vm, NULL, 0, size);
     object->type = type;
+    object->is_marked = false;
     object->next = vm->objects;
     vm->objects = object;
+#ifdef DEBUG_LOG_GC
+    printf("%p allocate %zu for %d\n", (void *)object, size, type);
+#endif
     return object;
 }
 
@@ -22,7 +29,9 @@ static ObjString *allocate_string(Vm *vm, char *chars, int length, uint32_t hash
     string->length = length;
     string->hash = hash;
     string->chars = chars;
-    table_set(&vm->strings, string, NIL_VAL);
+    push(vm, OBJ_VAL(string));
+    table_set(vm, &vm->strings, string, NIL_VAL);
+    pop(vm);
     return string;
 }
 
@@ -43,7 +52,7 @@ ObjFunction *new_function(Vm *vm)
     function->arity = 0;
     function->upvalue_count = 0;
     function->name = NULL;
-    init_chunk(&function->chunk);
+    init_chunk(vm, &function->chunk);
     return function;
 }
 

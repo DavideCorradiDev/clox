@@ -8,6 +8,8 @@
 #define FRAMES_MAX 64
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
+typedef struct Compiler Compiler;
+
 typedef struct CallFrame
 {
     ObjClosure *closure;
@@ -17,6 +19,7 @@ typedef struct CallFrame
 
 typedef struct Vm
 {
+    Compiler *compiler;
     CallFrame frames[FRAMES_MAX];
     int frame_count;
     Value stack[STACK_MAX];
@@ -24,7 +27,12 @@ typedef struct Vm
     Table globals;
     Table strings;
     ObjUpvalue *open_upvalues;
+    size_t bytes_allocated;
+    size_t next_gc;
     Obj *objects;
+    int gray_count;
+    int gray_capacity;
+    Obj **gray_stack;
 } Vm;
 
 typedef enum
@@ -36,6 +44,8 @@ typedef enum
 
 void init_vm(Vm *vm);
 void free_vm(Vm *vm);
+void push(Vm *vm, Value value);
+Value pop(Vm *vm);
 InterpretResult interpret(Vm *vm, const char *source);
 
 #endif

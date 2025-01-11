@@ -5,6 +5,7 @@
 
 typedef struct Obj Obj;
 typedef struct ObjString ObjString;
+typedef struct Vm Vm;
 
 typedef enum
 {
@@ -50,8 +51,8 @@ typedef struct
     Value *values;
 } ValueArray;
 
-void init_value_array(ValueArray *array);
-void free_value_array(ValueArray *array);
-void write_value_array(ValueArray *array, Value value);
+void init_value_array(Vm *vm, ValueArray *array);
+void free_value_array(Vm *vm, ValueArray *array);
+void write_value_array(Vm *vm, ValueArray *array, Value value);
 
 #endif

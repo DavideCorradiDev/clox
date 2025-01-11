@@ -23,13 +23,13 @@ static bool err_native(Vm *vm, int arg_count, Value *args)
     return false;
 }
 
-static void push(Vm *vm, Value value)
+void push(Vm *vm, Value value)
 {
     *vm->stack_top = value;
     vm->stack_top++;
 }
 
-static Value pop(Vm *vm)
+Value pop(Vm *vm)
 {
     vm->stack_top--;
     return *vm->stack_top;
@@ -79,7 +79,7 @@ static void define_native(Vm *vm, const char *name, int arity, NativeFn function
 {
     push(vm, OBJ_VAL(copy_string(vm, name, (int)strlen(name))));
     push(vm, OBJ_VAL(new_native(vm, arity, function)));
-    table_set(&vm->globals, AS_STRING(vm->stack[0]), vm->stack[1]);
+    table_set(vm, &vm->globals, AS_STRING(vm->stack[0]), vm->stack[1]);
     pop(vm);
     pop(vm);
 }
@@ -188,8 +188,8 @@ static bool is_falsey(Value value)
 
 static void concatenate(Vm *vm)
 {
-    ObjString *b = AS_STRING(pop(vm));
-    ObjString *a = AS_STRING(pop(vm));
+    ObjString *b = AS_STRING(peek(vm, 0));
+    ObjString *a = AS_STRING(peek(vm, 0));
     int length = a->length + b->length;
     char *chars = ALLOCATE(char, length + 1);
     memcpy(chars, a->chars, a->length);
@@ -197,6 +197,8 @@ static void concatenate(Vm *vm)
     chars[length] = '\0';
 
     ObjString *result = take_string(vm, chars, length);
+    pop(vm);
+    pop(vm);
     push(vm, OBJ_VAL(result));
 }
 
@@ -298,14 +300,14 @@ static InterpretResult run(Vm *vm)
         case OP_DEFINE_GLOBAL:
         {
             ObjString *name = READ_STRING();
-            table_set(&vm->globals, name, peek(vm, 0));
+            table_set(vm, &vm->globals, name, peek(vm, 0));
             pop(vm);
             break;
         }
         case OP_SET_GLOBAL:
         {
             ObjString *name = READ_STRING();
-            if (table_set(&vm->globals, name, peek(vm, 0)))
+            if (table_set(vm, &vm->globals, name, peek(vm, 0)))
             {
                 table_delete(&vm->globals, name);
                 frame->ip = ip;
@@ -475,19 +477,27 @@ static InterpretResult run(Vm *vm)
 
 void init_vm(Vm *vm)
 {
+    vm->compiler = NULL;
     reset_stack(vm);
-    init_table(&vm->globals);
-    init_table(&vm->strings);
+    init_table(vm, &vm->globals);
+    init_table(vm, &vm->strings);
+    vm->bytes_allocated = 0;
+    vm->next_gc = 1024 * 1024;
     vm->objects = NULL;
+    vm->gray_capacity = 0;
+    vm->gray_count = 0;
+    vm->gray_stack = NULL;
+
     define_native(vm, "clock", 0, clock_native);
     define_native(vm, "err", 0, err_native);
 }
 
 void free_vm(Vm *vm)
 {
+    vm->compiler = NULL;
     free_objects(vm);
-    free_table(&vm->strings);
-    free_table(&vm->globals);
+    free_table(vm, &vm->strings);
+    free_table(vm, &vm->globals);
 }
 
 InterpretResult interpret(Vm *vm, const char *source)
@@ -498,6 +508,7 @@ InterpretResult interpret(Vm *vm, const char *source)
     init_parser(&parser);
     Compiler compiler;
     init_compiler(&compiler, &scanner, &parser, vm, TYPE_SCRIPT);
+    vm->compiler = &compiler;
 
     ObjFunction *function = compile(&compiler);
 
@@ -518,6 +529,8 @@ InterpretResult interpret(Vm *vm, const char *source)
     InterpretResult result = run(vm);
 
     free_compiler(&compiler);
+    vm->compiler = NULL;
+
     free_scanner(&scanner);
     free_parser(&parser);
     return result;

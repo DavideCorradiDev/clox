@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "compiler.h"
 #include "common.h"
+#include "memory.h"
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
 #endif
@@ -100,7 +101,7 @@ static bool match(Compiler *compiler, TokenType type)
 
 static void emit_byte(Compiler *compiler, uint8_t byte)
 {
-    write_chunk(current_chunk(compiler), byte, compiler->parser->previous.line);
+    write_chunk(compiler->vm, current_chunk(compiler), byte, compiler->parser->previous.line);
 }
 
 static void emit_bytes(Compiler *compiler, uint8_t byte1, uint8_t byte2)
@@ -139,7 +140,7 @@ static void emit_return(Compiler *compiler)
 
 static void emit_constant(Compiler *compiler, Value value)
 {
-    write_constant(current_chunk(compiler), value, compiler->parser->previous.line);
+    write_constant(compiler->vm, current_chunk(compiler), value, compiler->parser->previous.line);
 }
 
 static void patch_jump(Compiler *compiler, int offset)
@@ -218,7 +219,7 @@ static void parse_precedence(Compiler *compiler, Precedence precedence)
 
 static uint8_t identifier_constant(Compiler *compiler, Token *name)
 {
-    return add_constant(current_chunk(compiler), OBJ_VAL(copy_string(compiler->vm, name->start, name->length)));
+    return add_constant(compiler->vm, current_chunk(compiler), OBJ_VAL(copy_string(compiler->vm, name->start, name->length)));
 }
 
 static bool identifiers_equal(Token *a, Token *b)
@@ -415,7 +416,9 @@ static void function(Compiler *compiler, FunctionType type)
 {
     Compiler sub_compiler;
     init_compiler(&sub_compiler, compiler->scanner, compiler->parser, compiler->vm, type);
+    compiler->vm->compiler = &sub_compiler;
     sub_compiler.enclosing = compiler;
+
     begin_scope(&sub_compiler);
 
     consume(&sub_compiler, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
@@ -437,9 +440,10 @@ static void function(Compiler *compiler, FunctionType type)
     block(&sub_compiler);
 
     ObjFunction *function = end_compiler(&sub_compiler);
+    compiler->vm->compiler = compiler;
     free_compiler(&sub_compiler);
 
-    emit_bytes(compiler, OP_CLOSURE, add_constant(current_chunk(compiler), OBJ_VAL(function)));
+    emit_bytes(compiler, OP_CLOSURE, add_constant(compiler->vm, current_chunk(compiler), OBJ_VAL(function)));
     for (int i = 0; i < function->upvalue_count; i++)
     {
         emit_byte(compiler, sub_compiler.upvalues[i].is_local ? 1 : 0);
@@ -880,14 +884,16 @@ void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm,
     compiler->scanner = scanner;
     compiler->parser = parser;
     compiler->vm = vm;
-    compiler->function = new_function(vm);
     compiler->type = type;
     compiler->local_count = 0;
     compiler->scope_depth = 0;
+    compiler->function = new_function(vm);
 
     if (type != TYPE_SCRIPT)
     {
+        push(vm, OBJ_VAL(compiler->function));
         compiler->function->name = copy_string(compiler->vm, compiler->parser->previous.start, compiler->parser->previous.length);
+        pop(vm);
     }
 
     Local *local = &compiler->locals[compiler->local_count++];
@@ -916,4 +922,14 @@ ObjFunction *compile(Compiler *compiler)
     ObjFunction *function = end_compiler(compiler);
 
     return compiler->parser->had_error ? NULL : function;
+}
+
+void mark_compiler_roots(Compiler *compiler)
+{
+    Compiler *curr = compiler;
+    while (curr != NULL)
+    {
+        mark_object(curr->vm, (Obj *)curr->function);
+        curr = curr->enclosing;
+    }
 }

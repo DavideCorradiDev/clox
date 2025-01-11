@@ -4,6 +4,7 @@
 #include "value.h"
 #include "object.h"
 #include "memory.h"
+#include "vm.h"
 
 void print_value(Value value)
 {
@@ -77,20 +78,20 @@ bool values_equal(Value a, Value b)
     }
 }
 
-void init_value_array(ValueArray *array)
+void init_value_array(Vm *vm, ValueArray *array)
 {
     array->capacity = 0;
     array->count = 0;
     array->values = NULL;
 }
 
-void free_value_array(ValueArray *array)
+void free_value_array(Vm *vm, ValueArray *array)
 {
     FREE_ARRAY(Value, array->values, array->capacity);
-    init_value_array(array);
+    init_value_array(vm, array);
 }
 
-void write_value_array(ValueArray *array, Value value)
+void write_value_array(Vm *vm, ValueArray *array, Value value)
 {
     if (array->capacity < array->count + 1)
     {

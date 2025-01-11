@@ -9,17 +9,17 @@
 
 #define TABLE_MAX_LOAD 0.75
 
-void init_table(Table *table)
+void init_table(Vm *vm, Table *table)
 {
     table->count = 0;
     table->capacity = 0;
     table->entries = NULL;
 }
 
-void free_table(Table *table)
+void free_table(Vm *vm, Table *table)
 {
     FREE_ARRAY(Entry, table->entries, table->capacity);
-    init_table(table);
+    init_table(vm, table);
 }
 
 static Entry *find_entry(Entry *entries, size_t capacity, ObjString *key)
@@ -51,7 +51,7 @@ static Entry *find_entry(Entry *entries, size_t capacity, ObjString *key)
     }
 }
 
-static void adjust_capacity(Table *table, int capacity)
+static void adjust_capacity(Vm *vm, Table *table, int capacity)
 {
     Entry *entries = ALLOCATE(Entry, capacity);
     for (int i = 0; i < capacity; i++)
@@ -96,12 +96,12 @@ bool table_get(Table *table, ObjString *key, Value *value)
     return true;
 }
 
-bool table_set(Table *table, ObjString *key, Value value)
+bool table_set(Vm *vm, Table *table, ObjString *key, Value value)
 {
     if (table->count + 1 > table->capacity * TABLE_MAX_LOAD)
     {
         int capacity = GROW_CAPACITY(table->capacity);
-        adjust_capacity(table, capacity);
+        adjust_capacity(vm, table, capacity);
     }
 
     Entry *entry = find_entry(table->entries, table->capacity, key);
@@ -133,14 +133,14 @@ bool table_delete(Table *table, ObjString *key)
     return true;
 }
 
-void table_add_all(Table *from, Table *to)
+void table_add_all(Vm *vm, Table *from, Table *to)
 {
     for (int i = 0; i < from->capacity; i++)
     {
         Entry *entry = &from->entries[i];
         if (entry->key != NULL)
         {
-            table_set(to, entry->key, entry->value);
+            table_set(vm, to, entry->key, entry->value);
         }
     }
 }
@@ -168,6 +168,28 @@ ObjString *table_find_string(Table *table, const char *chars, int length, uint32
             return entry->key;
         }
         index = (index + 1) % table->capacity;
+    }
+}
+
+void table_remove_white(Table *table)
+{
+    for (int i = 0; i < table->capacity; i++)
+    {
+        Entry *entry = &table->entries[i];
+        if (entry->key != NULL && !entry->key->obj.is_marked)
+        {
+            table_delete(table, entry->key);
+        }
+    }
+}
+
+void mark_table(Vm *vm, Table *table)
+{
+    for (int i = 0; i < table->capacity; i++)
+    {
+        Entry *entry = &table->entries[i];
+        mark_object(vm, (Obj *)entry->key);
+        mark_value(vm, entry->value);
     }
 }
 
