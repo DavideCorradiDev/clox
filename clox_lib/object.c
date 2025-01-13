@@ -3,9 +3,7 @@
 #include "vm.h"
 
 #include <string.h>
-#ifdef DEBUG_LOG_GC
 #include <stdio.h>
-#endif
 
 #define ALLOCATE_OBJ(vm, type, object_type) \
     (type *)allocate_object(vm, sizeof(type), object_type)
@@ -44,6 +42,31 @@ static uint32_t hash_string(const char *chars, int length)
         hash *= 16777691;
     }
     return hash;
+}
+
+static void print_function(ObjFunction *function)
+{
+    if (function->name == NULL)
+    {
+        printf("<script>");
+        return;
+    }
+    printf("<fn %s>", function->name->chars);
+}
+
+ObjClass *new_class(Vm *vm, ObjString *name)
+{
+    ObjClass *klass = ALLOCATE_OBJ(vm, ObjClass, OBJ_CLASS);
+    klass->name = name;
+    return klass;
+}
+
+ObjInstance *new_instance(Vm *vm, ObjClass *klass)
+{
+    ObjInstance *instance = ALLOCATE_OBJ(vm, ObjInstance, OBJ_INSTANCE);
+    instance->klass = klass;
+    init_table(vm, &instance->fields);
+    return instance;
 }
 
 ObjFunction *new_function(Vm *vm)
@@ -111,4 +134,32 @@ ObjUpvalue *new_upvalue(Vm *vm, Value *slot)
     upvalue->closed = NIL_VAL;
     upvalue->next = NULL;
     return upvalue;
+}
+
+void print_object(Value value)
+{
+    switch (OBJ_TYPE(value))
+    {
+    case OBJ_CLASS:
+        printf("%s", AS_CLASS(value)->name->chars);
+        break;
+    case OBJ_FUNCTION:
+        print_function(AS_FUNCTION(value));
+        break;
+    case OBJ_INSTANCE:
+        printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
+        break;
+    case OBJ_NATIVE:
+        printf("<native fn>");
+        break;
+    case OBJ_CLOSURE:
+        print_function(AS_CLOSURE(value)->function);
+        break;
+    case OBJ_STRING:
+        printf("%s", AS_CSTRING(value));
+        break;
+    case OBJ_UPVALUE:
+        printf("upvalue");
+        break;
+    }
 }

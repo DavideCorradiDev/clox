@@ -451,6 +451,19 @@ static void function(Compiler *compiler, FunctionType type)
     }
 }
 
+static void class_declaration(Compiler *compiler)
+{
+    consume(compiler, TOKEN_IDENTIFIER, "Expect class name.");
+    uint8_t name_constant = identifier_constant(compiler, &compiler->parser->previous);
+    declare_variable(compiler);
+
+    emit_bytes(compiler, OP_CLASS, name_constant);
+    define_variable(compiler, name_constant);
+
+    consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+    consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' before class body.");
+}
+
 static void fun_declaration(Compiler *compiler)
 {
     uint8_t global = parse_variable(compiler, "Expect function name.");
@@ -631,6 +644,10 @@ static void synchronize(Compiler *compiler)
 
 static void declaration(Compiler *compiler)
 {
+    if (match(compiler, TOKEN_CLASS))
+    {
+        class_declaration(compiler);
+    }
     if (match(compiler, TOKEN_FUN))
     {
         fun_declaration(compiler);
@@ -802,6 +819,22 @@ static void call(Compiler *compiler, bool can_assign)
     emit_bytes(compiler, OP_CALL, arg_count);
 }
 
+static void dot(Compiler *compiler, bool can_assign)
+{
+    consume(compiler, TOKEN_IDENTIFIER, "Expect property name after '.'.");
+    uint8_t name = identifier_constant(compiler, &compiler->parser->previous);
+
+    if (can_assign && match(compiler, TOKEN_EQUAL))
+    {
+        expression(compiler);
+        emit_bytes(compiler, OP_SET_PROPERTY, name);
+    }
+    else
+    {
+        emit_bytes(compiler, OP_GET_PROPERTY, name);
+    }
+}
+
 static void literal(Compiler *compiler, bool can_assign)
 {
     switch (compiler->parser->previous.type)
@@ -826,7 +859,7 @@ static ParseRule rules[] = {
     [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
-    [TOKEN_DOT] = {NULL, NULL, PREC_NONE},
+    [TOKEN_DOT] = {NULL, dot, PREC_CALL},
     [TOKEN_MINUS] = {unary, binary, PREC_TERM},
     [TOKEN_PLUS] = {NULL, binary, PREC_TERM},
     [TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},

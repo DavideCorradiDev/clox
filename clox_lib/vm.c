@@ -111,6 +111,13 @@ static bool call_value(Vm *vm, Value callee, int arg_count)
     {
         switch (OBJ_TYPE(callee))
         {
+        case OBJ_CLASS:
+        {
+            ObjClass *klass = AS_CLASS(callee);
+            vm->stack_top[-arg_count - 1] = OBJ_VAL(new_instance(vm, klass));
+            return true;
+            break;
+        }
         case OBJ_NATIVE:
         {
             ObjNative *native = AS_NATIVE(callee);
@@ -331,6 +338,43 @@ static InterpretResult run(Vm *vm)
             *frame->closure->upvalues[slot]->location = peek(vm, 0);
             break;
         }
+        case OP_GET_PROPERTY:
+        {
+            if (!IS_INSTANCE(peek(vm, 0)))
+            {
+                runtime_error(vm, "Only instances have properties.");
+                return INTERPRET_RUNTIME_ERROR;
+            }
+
+            ObjInstance *instance = AS_INSTANCE(peek(vm, 0));
+            ObjString *name = READ_STRING();
+
+            Value value;
+            if (table_get(&instance->fields, name, &value))
+            {
+                pop(vm);
+                push(vm, value);
+                break;
+            }
+
+            runtime_error(vm, "Undefined property %s.", name);
+            return INTERPRET_RUNTIME_ERROR;
+        }
+        case OP_SET_PROPERTY:
+        {
+            if (!IS_INSTANCE(peek(vm, 1)))
+            {
+                runtime_error(vm, "Only instances have properties.");
+                return INTERPRET_RUNTIME_ERROR;
+            }
+
+            ObjInstance *instance = AS_INSTANCE(peek(vm, 1));
+            table_set(vm, &instance->fields, READ_STRING(), peek(vm, 0));
+            Value value = pop(vm);
+            pop(vm);
+            push(vm, value);
+            break;
+        }
         case OP_EQUAL:
         {
             Value b = pop(vm);
@@ -461,6 +505,11 @@ static InterpretResult run(Vm *vm)
             push(vm, result);
             frame = &vm->frames[vm->frame_count - 1];
             ip = frame->ip;
+            break;
+        }
+        case OP_CLASS:
+        {
+            push(vm, OBJ_VAL(new_class(vm, READ_STRING())));
             break;
         }
         }

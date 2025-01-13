@@ -69,11 +69,23 @@ static void free_object(Vm *vm, Obj *object)
 #endif
     switch (object->type)
     {
+    case OBJ_CLASS:
+    {
+        FREE(ObjClass, object);
+        break;
+    }
     case OBJ_FUNCTION:
     {
         ObjFunction *function = (ObjFunction *)object;
         free_chunk(vm, &function->chunk);
         FREE(ObjFunction, object);
+        break;
+    }
+    case OBJ_INSTANCE:
+    {
+        ObjInstance *instance = (ObjInstance *)object;
+        free_table(vm, &instance->fields);
+        FREE(ObjInstance, object);
         break;
     }
     case OBJ_NATIVE:
@@ -138,6 +150,18 @@ static void blacken_object(Vm *vm, Obj *object)
 #endif
     switch (object->type)
     {
+    case OBJ_CLASS:
+    {
+        mark_object(vm, object);
+        break;
+    }
+    case OBJ_INSTANCE:
+    {
+        ObjInstance *instance = (ObjInstance *)object;
+        mark_object(vm, object);
+        mark_table(vm, &instance->fields);
+        break;
+    }
     case OBJ_CLOSURE:
     {
         ObjClosure *closure = (ObjClosure *)object;
