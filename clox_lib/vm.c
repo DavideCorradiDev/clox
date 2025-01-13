@@ -23,6 +23,42 @@ static bool err_native(Vm *vm, int arg_count, Value *args)
     return false;
 }
 
+static bool has_field_native(Vm *vm, int arg_count, Value *args)
+{
+    if (!IS_INSTANCE(args[0]))
+    {
+        args[-1] = OBJ_VAL(copy_string(vm, "Expect instance.", 16));
+        return false;
+    }
+    if (!IS_STRING(args[1]))
+    {
+        args[-1] = OBJ_VAL(copy_string(vm, "Expect string.", 14));
+        return false;
+    }
+    ObjInstance *instance = AS_INSTANCE(args[0]);
+    Value dummy;
+    args[-1] = BOOL_VAL(table_get(&instance->fields, AS_STRING(args[1]), &dummy));
+    return true;
+}
+
+static bool delete_field_native(Vm *vm, int arg_count, Value *args)
+{
+    if (!IS_INSTANCE(args[0]))
+    {
+        args[-1] = OBJ_VAL(copy_string(vm, "Expect instance.", 16));
+        return false;
+    }
+    if (!IS_STRING(args[1]))
+    {
+        args[-1] = OBJ_VAL(copy_string(vm, "Expect string.", 14));
+        return false;
+    }
+    ObjInstance *instance = AS_INSTANCE(args[0]);
+    table_delete(&instance->fields, AS_STRING(args[1]));
+    args[-1] = NIL_VAL;
+    return true;
+}
+
 void push(Vm *vm, Value value)
 {
     *vm->stack_top = value;
@@ -539,6 +575,8 @@ void init_vm(Vm *vm)
 
     define_native(vm, "clock", 0, clock_native);
     define_native(vm, "err", 0, err_native);
+    define_native(vm, "has_field", 2, has_field_native);
+    define_native(vm, "delete_field", 2, delete_field_native);
 }
 
 void free_vm(Vm *vm)
