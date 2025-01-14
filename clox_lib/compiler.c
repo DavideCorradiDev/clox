@@ -20,6 +20,7 @@ typedef struct
 
 static void expression(Compiler *compiler);
 static void declaration(Compiler *compiler);
+static void named_variable(Compiler *compiler, Token name, bool can_assign);
 static void statement(Compiler *compiler);
 static ParseRule *get_rule(TokenType type);
 static void parse_precedence(Compiler *compiler, Precedence precedence);
@@ -134,7 +135,14 @@ static int emit_jump(Compiler *compiler, uint8_t instruction)
 
 static void emit_return(Compiler *compiler)
 {
-    emit_byte(compiler, OP_NIL);
+    if (compiler->type == TYPE_INITIALIZER)
+    {
+        emit_bytes(compiler, OP_GET_LOCAL, 0);
+    }
+    else
+    {
+        emit_byte(compiler, OP_NIL);
+    }
     emit_byte(compiler, OP_RETURN);
 }
 
@@ -418,6 +426,7 @@ static void function(Compiler *compiler, FunctionType type)
     init_compiler(&sub_compiler, compiler->scanner, compiler->parser, compiler->vm, type);
     compiler->vm->compiler = &sub_compiler;
     sub_compiler.enclosing = compiler;
+    sub_compiler.current_class = compiler->current_class;
 
     begin_scope(&sub_compiler);
 
@@ -451,17 +460,47 @@ static void function(Compiler *compiler, FunctionType type)
     }
 }
 
+static void method(Compiler *compiler)
+{
+    consume(compiler, TOKEN_IDENTIFIER, "Expect method name.");
+    uint8_t constant = identifier_constant(compiler, &compiler->parser->previous);
+
+    FunctionType type = TYPE_METHOD;
+    if (compiler->parser->previous.length == 4 && memcmp(compiler->parser->previous.start, "init", 4) == 0)
+    {
+        type = TYPE_INITIALIZER;
+    }
+    function(compiler, type);
+
+    emit_bytes(compiler, OP_METHOD, constant);
+}
+
 static void class_declaration(Compiler *compiler)
 {
     consume(compiler, TOKEN_IDENTIFIER, "Expect class name.");
+    Token class_name = compiler->parser->previous;
     uint8_t name_constant = identifier_constant(compiler, &compiler->parser->previous);
     declare_variable(compiler);
 
     emit_bytes(compiler, OP_CLASS, name_constant);
     define_variable(compiler, name_constant);
 
+    ClassCompiler class_compiler;
+    class_compiler.enclosing = compiler->current_class;
+    compiler->current_class = &class_compiler;
+
+    named_variable(compiler, class_name, false);
     consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+
+    while (!check(compiler, TOKEN_RIGHT_BRACE) && !check(compiler, TOKEN_EOF))
+    {
+        method(compiler);
+    }
+
     consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' before class body.");
+    emit_byte(compiler, OP_POP);
+
+    compiler->current_class = class_compiler.enclosing;
 }
 
 static void fun_declaration(Compiler *compiler)
@@ -609,6 +648,10 @@ static void return_statement(Compiler *compiler)
     }
     else
     {
+        if (compiler->type == TYPE_INITIALIZER)
+        {
+            error(compiler, "Can't return a value from an initializer.");
+        }
         expression(compiler);
         consume(compiler, TOKEN_SEMICOLON, "Expect ';' after return value.");
         emit_byte(compiler, OP_RETURN);
@@ -754,6 +797,16 @@ static void variable(Compiler *compiler, bool can_assign)
     named_variable(compiler, compiler->parser->previous, can_assign);
 }
 
+static void this_(Compiler *compiler, bool can_assign)
+{
+    if (compiler->current_class == NULL)
+    {
+        error(compiler, "Can't use 'this' outside of a class.");
+        return;
+    }
+    variable(compiler, false);
+}
+
 static void unary(Compiler *compiler, bool can_assign)
 {
     TokenType operator_type = compiler->parser->previous.type;
@@ -829,6 +882,12 @@ static void dot(Compiler *compiler, bool can_assign)
         expression(compiler);
         emit_bytes(compiler, OP_SET_PROPERTY, name);
     }
+    else if (match(compiler, TOKEN_LEFT_PAREN))
+    {
+        uint8_t arg_count = argument_list(compiler);
+        emit_bytes(compiler, OP_INVOKE, name);
+        emit_byte(compiler, arg_count);
+    }
     else
     {
         emit_bytes(compiler, OP_GET_PROPERTY, name);
@@ -888,7 +947,7 @@ static ParseRule rules[] = {
     [TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
     [TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
     [TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
-    [TOKEN_THIS] = {NULL, NULL, PREC_NONE},
+    [TOKEN_THIS] = {this_, NULL, PREC_NONE},
     [TOKEN_TRUE] = {literal, NULL, PREC_NONE},
     [TOKEN_VAR] = {NULL, NULL, PREC_NONE},
     [TOKEN_WHILE] = {NULL, NULL, PREC_NONE},
@@ -914,6 +973,7 @@ void free_parser(Parser *parser)
 void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm, FunctionType type)
 {
     compiler->enclosing = NULL;
+    compiler->current_class = NULL;
     compiler->scanner = scanner;
     compiler->parser = parser;
     compiler->vm = vm;
@@ -932,8 +992,16 @@ void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm,
     Local *local = &compiler->locals[compiler->local_count++];
     local->depth = 0;
     local->is_captured = false;
-    local->name.start = "";
-    local->name.length = 0;
+    if (type != TYPE_FUNCTION)
+    {
+        local->name.start = "this";
+        local->name.length = 4;
+    }
+    else
+    {
+        local->name.start = "";
+        local->name.length = 0;
+    }
 }
 
 void free_compiler(Compiler *compiler)

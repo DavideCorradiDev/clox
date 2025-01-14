@@ -54,10 +54,19 @@ static void print_function(ObjFunction *function)
     printf("<fn %s>", function->name->chars);
 }
 
+ObjBoundMethod *new_bound_method(Vm *vm, Value receiver, ObjClosure *method)
+{
+    ObjBoundMethod *bound = ALLOCATE_OBJ(vm, ObjBoundMethod, OBJ_BOUND_METHOD);
+    bound->receiver = receiver;
+    bound->method = method;
+    return bound;
+}
+
 ObjClass *new_class(Vm *vm, ObjString *name)
 {
     ObjClass *klass = ALLOCATE_OBJ(vm, ObjClass, OBJ_CLASS);
     klass->name = name;
+    init_table(vm, &klass->methods);
     return klass;
 }
 
@@ -140,6 +149,9 @@ void print_object(Value value)
 {
     switch (OBJ_TYPE(value))
     {
+    case OBJ_BOUND_METHOD:
+        print_function(AS_BOUND_METHOD(value)->method->function);
+        break;
     case OBJ_CLASS:
         printf("%s", AS_CLASS(value)->name->chars);
         break;
