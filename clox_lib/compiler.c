@@ -24,7 +24,7 @@ static void named_variable(Compiler *compiler, Token name, bool can_assign);
 static void statement(Compiler *compiler);
 static ParseRule *get_rule(TokenType type);
 static void parse_precedence(Compiler *compiler, Precedence precedence);
-
+static void variable(Compiler *compiler, bool can_assign);
 static void error_at(Compiler *compiler, Token *token, const char *message)
 {
     if (compiler->parser->panic_mode)
@@ -303,7 +303,7 @@ static int resolve_upvalue(Compiler *compiler, Token *name)
     return -1;
 }
 
-static void add_local(Compiler *compiler, Token *name)
+static void add_local(Compiler *compiler, Token name)
 {
     if (compiler->local_count == UINT8_COUNT)
     {
@@ -312,7 +312,7 @@ static void add_local(Compiler *compiler, Token *name)
     }
 
     Local *local = &compiler->locals[compiler->local_count++];
-    local->name = *name;
+    local->name = name;
     local->depth = -1;
     local->is_captured = false;
 }
@@ -336,7 +336,7 @@ static void declare_variable(Compiler *compiler)
             error(compiler, "Already a variable with this name in this scope.");
         }
     }
-    add_local(compiler, name);
+    add_local(compiler, *name);
 }
 
 static uint8_t parse_variable(Compiler *compiler, const char *error_message)
@@ -475,6 +475,42 @@ static void method(Compiler *compiler)
     emit_bytes(compiler, OP_METHOD, constant);
 }
 
+static Token synthetic_token(Compiler *compiler, const char *text)
+{
+    Token token;
+    token.start = text;
+    token.length = (int)strlen(text);
+    return token;
+}
+
+static void super_(Compiler *compiler, bool can_assign)
+{
+    if (compiler->current_class == NULL)
+    {
+        error(compiler, "Can't use 'super' outside of a class.");
+    }
+    else if (!compiler->current_class->has_superclass)
+    {
+        error(compiler, "Can't use 'super' in a class with no superclass.");
+    }
+    consume(compiler, TOKEN_DOT, "Expect '.' after 'super'.");
+    consume(compiler, TOKEN_IDENTIFIER, "Expect superclass method name.");
+    uint8_t name = identifier_constant(compiler, &compiler->parser->previous);
+    named_variable(compiler, synthetic_token(compiler, "this"), false);
+    if (match(compiler, TOKEN_LEFT_PAREN))
+    {
+        uint8_t arg_count = argument_list(compiler);
+        named_variable(compiler, synthetic_token(compiler, "super"), false);
+        emit_bytes(compiler, OP_SUPER_INVOKE, name);
+        emit_byte(compiler, arg_count);
+    }
+    else
+    {
+        named_variable(compiler, synthetic_token(compiler, "super"), false);
+        emit_bytes(compiler, OP_GET_SUPER, name);
+    }
+}
+
 static void class_declaration(Compiler *compiler)
 {
     consume(compiler, TOKEN_IDENTIFIER, "Expect class name.");
@@ -487,7 +523,28 @@ static void class_declaration(Compiler *compiler)
 
     ClassCompiler class_compiler;
     class_compiler.enclosing = compiler->current_class;
+    class_compiler.has_superclass = false;
+
     compiler->current_class = &class_compiler;
+
+    if (match(compiler, TOKEN_LESS))
+    {
+        consume(compiler, TOKEN_IDENTIFIER, "Expect superclass name.");
+        variable(compiler, false);
+        if (identifiers_equal(&class_name, &compiler->parser->previous))
+        {
+            error(compiler, "A class can't inherit from itself.");
+        }
+
+        begin_scope(compiler);
+        add_local(compiler, synthetic_token(compiler, "super"));
+        define_variable(compiler, 0);
+
+        named_variable(compiler, class_name, false);
+        emit_byte(compiler, OP_INHERIT);
+
+        compiler->current_class->has_superclass = true;
+    }
 
     named_variable(compiler, class_name, false);
     consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
@@ -499,6 +556,11 @@ static void class_declaration(Compiler *compiler)
 
     consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' before class body.");
     emit_byte(compiler, OP_POP);
+
+    if (compiler->current_class->has_superclass)
+    {
+        end_scope(compiler);
+    }
 
     compiler->current_class = class_compiler.enclosing;
 }
@@ -691,7 +753,7 @@ static void declaration(Compiler *compiler)
     {
         class_declaration(compiler);
     }
-    if (match(compiler, TOKEN_FUN))
+    else if (match(compiler, TOKEN_FUN))
     {
         fun_declaration(compiler);
     }
@@ -946,7 +1008,7 @@ static ParseRule rules[] = {
     [TOKEN_OR] = {NULL, or_, PREC_OR},
     [TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
     [TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
-    [TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
+    [TOKEN_SUPER] = {super_, NULL, PREC_NONE},
     [TOKEN_THIS] = {this_, NULL, PREC_NONE},
     [TOKEN_TRUE] = {literal, NULL, PREC_NONE},
     [TOKEN_VAR] = {NULL, NULL, PREC_NONE},

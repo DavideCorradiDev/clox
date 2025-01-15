@@ -317,10 +317,9 @@ static void concatenate(Vm *vm)
 static InterpretResult run(Vm *vm)
 {
     CallFrame *frame = &vm->frames[vm->frame_count - 1];
-    register uint8_t *ip = frame->ip;
-#define READ_BYTE() (*ip++)
-#define READ_SHORT() (ip += 2, ((uint16_t)(ip[-2]) << 8 | (uint16_t)(ip[-1])))
-#define READ_3_BYTES() (ip += 3, ((uint32_t)(ip[-2]) << 16 | (uint32_t)(ip[-2]) << 8 | (uint32_t)(ip[-1])))
+#define READ_BYTE() (*frame->ip++)
+#define READ_SHORT() (frame->ip += 2, ((uint16_t)(frame->ip[-2]) << 8 | (uint16_t)(frame->ip[-1])))
+#define READ_3_BYTES() (frame->ip += 3, ((uint32_t)(frame->ip[-2]) << 16 | (uint32_t)(frame->ip[-2]) << 8 | (uint32_t)(frame->ip[-1])))
 #define READ_CONSTANT() (frame->closure->function->chunk.constants.values[READ_BYTE()])
 #define READ_CONSTANT_LONG() (frame->closure->function->chunk.constants.values[READ_3_BYTES()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
@@ -329,7 +328,6 @@ static InterpretResult run(Vm *vm)
     {                                                           \
         if (!IS_NUMBER(peek(vm, 0)) || !IS_NUMBER(peek(vm, 1))) \
         {                                                       \
-            frame->ip = ip;                                     \
             runtime_error(vm, "Operands must be numbers.");     \
             return INTERPRET_RUNTIME_ERROR;                     \
         }                                                       \
@@ -358,7 +356,7 @@ static InterpretResult run(Vm *vm)
         print_table(&vm->strings);
         printf("\n");
 
-        disassemble_instruction(&frame->closure->function->chunk, (int)(ip - frame->closure->function->chunk.code));
+        disassemble_instruction(&frame->closure->function->chunk, (int)(frame->ip - frame->closure->function->chunk.code));
 #endif
         uint8_t instruction;
         switch (instruction = READ_BYTE())
@@ -402,7 +400,6 @@ static InterpretResult run(Vm *vm)
             Value value;
             if (!table_get(&vm->globals, name, &value))
             {
-                frame->ip = ip;
                 runtime_error(vm, "Undefined variable '%s'.", name->chars);
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -422,7 +419,6 @@ static InterpretResult run(Vm *vm)
             if (table_set(vm, &vm->globals, name, peek(vm, 0)))
             {
                 table_delete(&vm->globals, name);
-                frame->ip = ip;
                 runtime_error(vm, "Undefined variable '%s'.", name->chars);
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -484,6 +480,16 @@ static InterpretResult run(Vm *vm)
             push(vm, value);
             break;
         }
+        case OP_GET_SUPER:
+        {
+            ObjString *name = READ_STRING();
+            ObjClass *superclass = AS_CLASS(pop(vm));
+            if (!bind_method(vm, superclass, name))
+            {
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            break;
+        }
         case OP_EQUAL:
         {
             Value b = pop(vm);
@@ -510,7 +516,6 @@ static InterpretResult run(Vm *vm)
             }
             else
             {
-                frame->ip = ip;
                 runtime_error(vm, "Operands must be two numbers or two strings.");
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -530,7 +535,6 @@ static InterpretResult run(Vm *vm)
         case OP_NEGATE:
             if (!IS_NUMBER(peek(vm, 0)))
             {
-                frame->ip = ip;
                 runtime_error(vm, "Operand must be a number.");
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -543,7 +547,7 @@ static InterpretResult run(Vm *vm)
         case OP_JUMP:
         {
             uint16_t offset = READ_SHORT();
-            ip += offset;
+            frame->ip += offset;
             break;
         }
         case OP_JUMP_IF_FALSE:
@@ -551,31 +555,28 @@ static InterpretResult run(Vm *vm)
             uint16_t offset = READ_SHORT();
             if (is_falsey(peek(vm, 0)))
             {
-                ip += offset;
+                frame->ip += offset;
             }
             break;
         }
         case OP_LOOP:
         {
             uint16_t offset = READ_SHORT();
-            ip -= offset;
+            frame->ip -= offset;
             break;
         }
         case OP_CALL:
         {
             int arg_count = READ_BYTE();
-            frame->ip = ip;
             if (!call_value(vm, peek(vm, arg_count), arg_count))
             {
                 return INTERPRET_RUNTIME_ERROR;
             }
             frame = &vm->frames[vm->frame_count - 1];
-            ip = frame->ip;
             break;
         }
         case OP_INVOKE:
         {
-            frame->ip = ip;
             ObjString *method = READ_STRING();
             int arg_count = READ_BYTE();
             if (!invoke(vm, method, arg_count))
@@ -583,7 +584,18 @@ static InterpretResult run(Vm *vm)
                 return INTERPRET_RUNTIME_ERROR;
             }
             frame = &vm->frames[vm->frame_count - 1];
-            ip = frame->ip;
+            break;
+        }
+        case OP_SUPER_INVOKE:
+        {
+            ObjString *method = READ_STRING();
+            int argCount = READ_BYTE();
+            ObjClass *superclass = AS_CLASS(pop(vm));
+            if (!invoke_from_class(vm, superclass, method, argCount))
+            {
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            frame = &vm->frames[vm->frame_count - 1];
             break;
         }
         case OP_CLOSURE:
@@ -626,12 +638,24 @@ static InterpretResult run(Vm *vm)
             vm->stack_top = frame->slots;
             push(vm, result);
             frame = &vm->frames[vm->frame_count - 1];
-            ip = frame->ip;
             break;
         }
         case OP_CLASS:
         {
             push(vm, OBJ_VAL(new_class(vm, READ_STRING())));
+            break;
+        }
+        case OP_INHERIT:
+        {
+            Value superclass = peek(vm, 1);
+            if (!IS_CLASS(superclass))
+            {
+                runtime_error(vm, "Superclass must be a class.");
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            ObjClass *subclass = AS_CLASS(peek(vm, 0));
+            table_add_all(vm, &AS_CLASS(superclass)->methods, &subclass->methods);
+            pop(vm);
             break;
         }
         case OP_METHOD:
@@ -711,7 +735,6 @@ InterpretResult interpret(Vm *vm, const char *source)
 
     free_compiler(&compiler);
     vm->compiler = NULL;
-
     free_scanner(&scanner);
     free_parser(&parser);
     return result;

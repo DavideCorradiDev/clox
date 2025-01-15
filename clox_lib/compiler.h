@@ -72,6 +72,7 @@ typedef struct Compiler
 typedef struct ClassCompiler
 {
     struct ClassCompiler *enclosing;
+    bool has_superclass;
 } ClassCompiler;
 
 void init_compiler(Compiler *compiler, Scanner *scanner, Parser *parser, Vm *vm, FunctionType type);
